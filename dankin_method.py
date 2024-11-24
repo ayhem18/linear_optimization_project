@@ -50,13 +50,13 @@ def dankin_algorithm(A: np.ndarray,
                      b: np.ndarray, 
                      c: np.ndarray, 
                      epsilon:float,
-                     alpha: float = 5 * 10 ** -4) -> Optional[np.ndarray]:
+                     alpha: float = 5 * 10 ** -4,
+                     max_iterations: int = 10 ** 3) -> Optional[np.ndarray]:
     # the problem is assumed to be on the standard form
 
     # step1: initialization
     x_k = initialization(A, b, epsilon=epsilon)
 
-    print("initialization: done")
 
     if x_k is None:
         return None
@@ -71,8 +71,9 @@ def dankin_algorithm(A: np.ndarray,
     # define "e"
     e_vec = np.ones((1, n))
     
+    iter_counter = 0
 
-    while True:
+    while iter_counter <= max_iterations:
         # extract the diagonal matrix out of x_k
         # x_k = 
         x_dk = np.diag(x_k.squeeze())
@@ -106,36 +107,8 @@ def dankin_algorithm(A: np.ndarray,
 
         x_k = x_k + step_k * (x_dk @ dy_k)
 
-
-
-def few_tests():      
-    random.seed(0)
-    np.random.seed(0)
-
-    for _ in range(50):
-        m, n = random.randint(3, 12), random.randint(30, 50)
-
-        A = np.random.randn(m, n)
-        b = np.random.randn(m)
-
-        cost_vec = np.random.randint(-3, 3, size=(n,))
-
-        # solve with scipy
-        x_scipy = opt.linprog(c=cost_vec, A_eq=A, b_eq=b, bounds=(0, None)).x
-
-        x_custom = dankin_algorithm(A=A, b=b, c=cost_vec, epsilon=10 ** -3)
-
-        assert (x_custom is None) == (x_scipy is None), "Either both null or none of them" 
-
-        if x_custom is None:
-            continue
-
-        cf_scipy = np.expand_dims(x_scipy, axis=0) @ np.expand_dims(cost_vec, axis=-1)
-        
-        cf_custom = np.expand_dims(x_custom, axis=0) @ np.expand_dims(cost_vec, axis=-1)
-
-        print(f"cost function with scipy: {cf_scipy}")
-        print(f"cost function with scipy: {cf_custom}")
+        # make sure to increment the counter
+        iter_counter += 1
 
 
 from project import get_cost_coefficients, get_eq_constraints,get_standard_format_matrix, decoding_bin, encoding_bin, noisychannel
