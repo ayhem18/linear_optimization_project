@@ -8,11 +8,12 @@ import numpy.linalg as la
 from typing import Optional
 import scipy.optimize as opt
 
+from project import get_cost_coefficients, get_eq_constraints,get_standard_format_matrix, prepare_message, MY_MESSAGE, decoding_bin
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
-def initialization(A: np.ndarray, b:np.ndarray, epsilon: float) -> np.ndarray:
+def dikin_initialization(A: np.ndarray, b:np.ndarray, epsilon: float) -> np.ndarray:
     # quick check: make sure the shapes match
     if A.ndim != 2:
         raise ValueError(f"The initialization function expects 'A' to be 2 dimensionsal. Found: {A.shape}")
@@ -46,7 +47,7 @@ def initialization(A: np.ndarray, b:np.ndarray, epsilon: float) -> np.ndarray:
 
     return np.expand_dims(x_0, axis=-1)
 
-def dankin_algorithm(A: np.ndarray, 
+def dikin_algorithm(A: np.ndarray, 
                      b: np.ndarray, 
                      c: np.ndarray, 
                      epsilon:float,
@@ -55,7 +56,7 @@ def dankin_algorithm(A: np.ndarray,
     # the problem is assumed to be on the standard form
 
     # step1: initialization
-    x_k = initialization(A, b, epsilon=epsilon)
+    x_k = dikin_initialization(A, b, epsilon=epsilon)
 
 
     if x_k is None:
@@ -110,44 +111,32 @@ def dankin_algorithm(A: np.ndarray,
         # make sure to increment the counter
         iter_counter += 1
 
+def run_dikin_algo(percent_error: float):
+    A, yprime = prepare_message(message=MY_MESSAGE, percent_error=percent_error)
 
-from project import get_cost_coefficients, get_eq_constraints,get_standard_format_matrix, decoding_bin, encoding_bin, noisychannel
-
-
-if __name__ == '__main__':
-    # few_tests()
-
-    my_mess = "Hey ! Welcome "
-
-    # Message in binary form
-    binary_vector, d = encoding_bin(my_mess)
-    x = binary_vector.astype(np.float32)
-
-    # Length of the message
-    size = x.shape
-    n = size[0]
-
-    # Length of the message which will be sent
-    m = 4*n
-
-    # Encoding matrix: we take a randomly generated matrix
-    A = np.random.randn(m,n)
-
-    # Message you wish to send
-    y = A@x
-
-    # Noise added by the transmission channel
-    # = normal N(0,sigma) for a % input of y
-    percenterror = 0.05
-    yprime = noisychannel(y, percenterror)
-
+    _, n = A.shape
 
     cost_vec = get_cost_coefficients(A)
     b_eq = get_eq_constraints(A, yprime)
     A_eq = get_standard_format_matrix(A)
 
-    print("Started decoding ...")
-    x_dankin =dankin_algorithm(A_eq, b_eq, cost_vec, 10 ** -3)
-    x_dankin_path = os.path.join(SCRIPT_DIR, 'x_dankin.npy')
-    if not os.path.exists(x_dankin_path):
-        np.save(x_dankin_path, x_dankin)
+    
+    file_name = os.path.join(SCRIPT_DIR, f"dikin_my_msg_{percent_error}.npy") 
+    
+    if not os.path.exists(file_name):
+        x_dikin = dikin_algorithm(A_eq, b_eq, cost_vec, 10 ** -3)        
+        np.save(file_name, x_dikin)
+    else:
+        return n, np.load(file_name)
+    
+    return n, x_dikin
+
+
+if __name__ == '__main__':
+    for pe in [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+        n, x = run_dikin_algo(pe)
+        print(x)
+        xprime = x[:n]
+        d = 8    # Number of bits per character
+        message_decoded, binary_matrix = decoding_bin(xprime, d)
+        print(f"The recovered message is with {pe} noise level:", message_decoded) 

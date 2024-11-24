@@ -74,10 +74,10 @@ def noisychannel(y, percenterror):
     y_n[I] = vec                             # Corruption of selected inputs
     return y_n
 
-
 ############################ Functions to solve the MIIMIZATION PROBLEM ############################
 
 # let's create some utility functions: to solve the minimization problem
+# let's create some utility functions
 def get_standard_format_matrix(A: np.ndarray) -> np.ndarray:
     m, p = A.shape
     I = np.eye(m)
@@ -115,7 +115,9 @@ def get_eq_constraints(A: np.ndarray, y_noise: np.ndarray) -> np.ndarray:
     assert b_standard .shape == (2 * m + p,), f"Expected {(2 * m + p,)}. Found: {b_standard .shape}"
     return b_standard
 
-def decode_secrete_message(A: np.ndarray, y_noise: np.ndarray):
+
+
+def solve_relaxed(A: np.ndarray, y_noise: np.ndarray):
     # according to the scipy.linprog documentation
     # the function accepts 5 arguments
     # c, Aub, bub, Aeq, b_eq, lb, ub
@@ -133,66 +135,11 @@ def decode_secrete_message(A: np.ndarray, y_noise: np.ndarray):
     x_standard = opt.linprog(c, A_ub=None, b_ub=None, A_eq=Astandard, b_eq=b_standard, bounds=(0, None)).x
     return x_standard
 
-############################ Functions to to determine whether the solution is a vertex ############################
-def is_invertible(matrix: np.ndarray):
-    # determining whether a matrix numerically is tricky...
-    # using the following approach:
-    # https://stackoverflow.com/questions/17931613/how-to-decide-a-whether-a-matrix-is-singular-in-python-numpy
 
-    if matrix.shape[0] != matrix.shape[1]:
-        raise ValueError(f"Make sure to pass an invertible matrix. found matrix with shape: {matrix.shape}")
-    
-    return np.linalg.matrix_rank(matrix) == matrix.shape[0]
 
-def isVertex(A: np.ndarray, 
-    solution: np.ndarray, 
-    zero_thresh: float = 10 ** -16 
-    ) -> bool:
-
-    Astadard = get_standard_format_matrix(A)
-
-    m, n = Astadard.shape
-
-    # consider values less than a certain threshold as zero
-    c_sol = np.clip(solution, zero_thresh, 1)
-    c_sol = c_sol  * (c_sol >= zero_thresh) # any value less than 'zero_thresh' will be set to 0
-
-    zero_entries_indices = [i for i, v in enumerate(solution) if v == 0]
-
-    print(f"found {len(zero_entries_indices)} zero entries with n - m equals: {n - m}")
-
-    # find all the combinations of set with (n - m) zero entries
-    cs = list(combinations(zero_entries_indices, n - m))
-
-    for null_entries in tqdm(cs, desc="iterating through possible combinations"):
-        # convert the null_entries to a set
-        null_entries = set(null_entries)
-        # extract the basic_entries
-        basic_entries = [i for i, _ in enumerate(solution) if i not in null_entries]
-
-        # extract the submatrix
-        basic_submatrix = Astadard[:, basic_entries]
-        # make sure the shape is correct
-        assert basic_submatrix.shape == (m, m)
-
-        # check the invertibility of the basic submatrix 
-        is_basic = is_invertible(basic_submatrix)
-
-        # if we found an invertible, then our job is done here
-        if is_basic:    
-            return True
-        
-        # otherwise... move to the next candidate set of null entries.
-
-    return False
-
-########################### QUESTION 5:
-
-def decode_my_messages(percent_error:float = 0.1) -> Tuple[int, np.ndarray]:
-    my_mess = MY_MESSAGE
-
+def prepare_message(message: str, percent_error:float = 0.1) -> Tuple[int, np.ndarray]:
     # Message in binary form
-    binary_vector, d = encoding_bin(my_mess)
+    binary_vector, d = encoding_bin(message)
     x = binary_vector.astype(np.float32)
 
     # Length of the message
@@ -208,41 +155,69 @@ def decode_my_messages(percent_error:float = 0.1) -> Tuple[int, np.ndarray]:
     # Message you wish to send
     y = A@x
 
-    # Noise added by the transmission channel
-    # = normal N(0,sigma) for a % input of y
     yprime = noisychannel(y, percent_error)    
+
+    return A, yprime
+
+
+def decode_relaxed_messages(message: str, percent_error: float = 0.1):
+    A, yprime = prepare_message(message=message, percent_error=percent_error)
+
+    m, n = A.shape
 
     file_name = os.path.join(SCRIPT_DIR, f'my_msg_{round(percent_error, 4)}.npy')
 
     if not os.path.exists(file_name): 
-        x_standard = decode_secrete_message(A, yprime)
+        x_standard = solve_relaxed(A, yprime)
         np.save(file_name, x_standard)
         return n, x_standard
     else:
-        return n, np.load(file_name)    
+        return n, np.load(file_name)  
+
+def solve_integer(A: np.ndarray, y_noise: np.ndarray):
+    # according to the scipy.linprog documentation
+    # the function accepts 5 arguments
+    # c, Aub, bub, Aeq, b_eq, lb, ub
+
+    # minimize: c @ x
+    # such that
+    # A_ub @ x <= b_ub
+    # A_eq @ x == b_eq
+    # lb <= x <= ub
+
+    c = get_cost_coefficients(A)
+    Astandard = get_standard_format_matrix(A)
+    b_standard = get_eq_constraints(A, y_noise)
+
+    _, n = A.shape
+
+    integr = np.zeros(len(c))
+    for i in range(n):
+        integr[i] = 1
+
+    return n, opt.linprog(c, A_eq=Astandard, b_eq=b_standard, integrality=integr, method='highs', options={'maxiter': 500}).x
+
+
+def decode_integer_messages(message: str, percent_error: float = 0.1):
+    A, yprime = prepare_message(message=message, percent_error=percent_error)
+
+    m, n = A.shape
+
+    file_name = os.path.join(SCRIPT_DIR, f'integer_my_msg_{round(percent_error, 4)}.npy')
+
+    if not os.path.exists(file_name): 
+        n, x_standard = solve_integer(A, yprime)
+        np.save(file_name, x_standard)
+        return n, x_standard
+    else:
+        return n, np.load(file_name)   
 
 
 if __name__ == '__main__':
-    # data = io.loadmat('messageFromAlice.mat')
-    # A = data['A']
-    # yprime = data['yprime'].T
-    # yprime = np.squeeze(yprime)
-    # d = data['d'][0][0]
 
-    # # save x_standard once instead of rerunning everytime
-    # if not os.path.exists(X_STANDARD_SOL_PATH):
-    #     x_standard = decode_secrete_message(A, yprime)
-    #     np.save(X_STANDARD_SOL_PATH, x_standard)
-    # else:
-    #     x_standard = np.load(X_STANDARD_SOL_PATH)
-
-    # # since x_standard contains xprime, t and slack variables, we need to extract x' before proceeding
-    # xprime = x_standard[:A.shape[1]]
-
-    for pe in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
-        n, x = decode_my_messages(pe)
+    for pe in [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+        n, x = decode_integer_messages(MY_MESSAGE, pe)
         xprime = x[:n]
         d = 8    # Number of bits per character
         message_decoded, binary_matrix = decoding_bin(xprime, d)
-        print(f"The recovered message is with {pe} noise level:", message_decoded)        
-
+        print(f"The recovered message is with {pe} noise level:", message_decoded) 
