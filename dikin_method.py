@@ -5,8 +5,9 @@ This script contains the implementation of the Dankin's method
 import random, os
 import numpy as np
 import numpy.linalg as la
-from typing import Optional
 import scipy.optimize as opt
+from typing import Optional
+from tqdm import tqdm
 
 from project import get_cost_coefficients, get_eq_constraints,get_standard_format_matrix, prepare_message, MY_MESSAGE, decoding_bin
 
@@ -50,16 +51,16 @@ def dikin_initialization(A: np.ndarray, b:np.ndarray, epsilon: float) -> np.ndar
 def dikin_algorithm(A: np.ndarray, 
                      b: np.ndarray, 
                      c: np.ndarray, 
-                     epsilon:float,
-                     alpha: float = 5 * 10 ** -4,
-                     max_iterations: int = 10 ** 3) -> Optional[np.ndarray]:
+                     epsilon:float = 10 ** -6,
+                     alpha: float = 0.9,
+                     max_iterations: int = 100) -> Optional[np.ndarray]:
     # the problem is assumed to be on the standard form
 
     # step1: initialization
-    x_k = dikin_initialization(A, b, epsilon=epsilon)
+    x = dikin_initialization(A, b, epsilon=epsilon)
 
 
-    if x_k is None:
+    if x is None:
         return None
     
     _, n = A.shape
@@ -72,44 +73,32 @@ def dikin_algorithm(A: np.ndarray,
     # define "e"
     e_vec = np.ones((1, n))
     
-    iter_counter = 0
-
-    while iter_counter <= max_iterations:
-        # extract the diagonal matrix out of x_k
-        # x_k = 
-        x_dk = np.diag(x_k.squeeze())
-
-        # step2: computation of dual estimates
-        w_k = la.inv((A @ x_dk) @ (x_dk  @ A.T)) @ (A @ x_dk) @ x_dk @ c 
-
-        # step3: computation of reduced costs
+    for _ in tqdm(range(max_iterations)):
+        # dual estimates
+        X_k = np.diag(x.squeeze())
+        w_k = np.linalg.inv(A @ X_k @ X_k @ A.T) @ A @ X_k @ X_k @ c
+        # reduced costs
         r_k = c - A.T @ w_k
 
-        # step4: check for optimality
-        if np.all(r_k >= 0) and (e_vec @ x_dk @ r_k).item() <= epsilon:
-            return x_k.squeeze()
-        
-        # step5: compute dky
-        dy_k = -x_dk @ r_k
-
-        # step6: 
-        ## check for unboundedness
-        if np.all(dy_k > 0):
+        if np.all(r_k >= 0) and np.all((e_vec @ X_k @ r_k).item() <= epsilon):
+            return x
+        # direction of translation
+        d_y_k = - X_k @ r_k
+        # check for unboundness
+        if np.all(d_y_k > 0):
             return None
-        
-        # check for optimal solution
-        if np.all(dy_k == 0):
-            return x_k.squeeze()
-        
-        
-        # step7:
-        # find the minimum value out of [- 1 / (dk_y (i))] out of i such that (dk_y (i) < 0) 
-        step_k = np.min([-1 / (x) for x  in dy_k.squeeze() if x < 0]).item() * alpha
+        # check for optimality
+        if np.all(d_y_k == 0):
+            return x
+        # calculate step
+        d_y_k_neg = d_y_k[d_y_k < 0]
+        if d_y_k_neg.size == 0:
+            return x
+        alpha_k = np.min(alpha / -d_y_k_neg)
+        # new solution
+        x = x + alpha_k * X_k @ d_y_k
 
-        x_k = x_k + step_k * (x_dk @ dy_k)
-
-        # make sure to increment the counter
-        iter_counter += 1
+    return x
 
 def run_dikin_algo(percent_error: float):
     A, yprime = prepare_message(message=MY_MESSAGE, percent_error=percent_error)
@@ -133,10 +122,16 @@ def run_dikin_algo(percent_error: float):
 
 
 if __name__ == '__main__':
+    random.seed(0)
+    np.random.seed(0)
+
     for pe in [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
-        n, x = run_dikin_algo(pe)
-        print(x)
-        xprime = x[:n]
-        d = 8    # Number of bits per character
-        message_decoded, binary_matrix = decoding_bin(xprime, d)
-        print(f"The recovered message is with {pe} noise level:", message_decoded) 
+        print(f"percentage error: {pe}")
+        try:
+            n, x = run_dikin_algo(pe)
+            xprime = x[:n]
+            d = 8    # Number of bits per character
+            message_decoded, binary_matrix = decoding_bin(xprime, d)
+            print(f"The recovered message is with {pe} noise level:", message_decoded) 
+        except TypeError:
+            continue

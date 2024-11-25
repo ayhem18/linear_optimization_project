@@ -195,7 +195,7 @@ def solve_integer(A: np.ndarray, y_noise: np.ndarray):
     for i in range(n):
         integr[i] = 1
 
-    return n, opt.linprog(c, A_eq=Astandard, b_eq=b_standard, integrality=integr, method='highs', options={'maxiter': 500}).x
+    return n, opt.linprog(c, A_eq=Astandard, b_eq=b_standard, integrality=integr, method='highs', options={'maxiter': 10}).x
 
 
 def decode_integer_messages(message: str, percent_error: float = 0.1):
