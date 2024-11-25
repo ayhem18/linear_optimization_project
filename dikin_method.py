@@ -74,27 +74,34 @@ def dikin_algorithm(A: np.ndarray,
     e_vec = np.ones((1, n))
     
     for _ in tqdm(range(max_iterations)):
-        # dual estimates
+
         X_k = np.diag(x.squeeze())
+        # call x_k twice instead of (**2) to avoid numerical overflow
         w_k = np.linalg.inv(A @ X_k @ X_k @ A.T) @ A @ X_k @ X_k @ c
-        # reduced costs
+
         r_k = c - A.T @ w_k
 
+        # first stop condition
         if np.all(r_k >= 0) and np.all((e_vec @ X_k @ r_k).item() <= epsilon):
             return x
-        # direction of translation
+        
         d_y_k = - X_k @ r_k
+
         # check for unboundness
         if np.all(d_y_k > 0):
             return None
         # check for optimality
         if np.all(d_y_k == 0):
             return x
-        # calculate step
+
+        # step computation
         d_y_k_neg = d_y_k[d_y_k < 0]
+
         if d_y_k_neg.size == 0:
+            # return just in case
             return x
-        alpha_k = np.min(alpha / -d_y_k_neg)
+
+        alpha_k = alpha * np.min(1 / -d_y_k_neg)
         # new solution
         x = x + alpha_k * X_k @ d_y_k
 
