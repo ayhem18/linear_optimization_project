@@ -15,8 +15,6 @@ from typing import Tuple
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 X_STANDARD_SOL_PATH = os.path.join(SCRIPT_DIR, 'x_standard.npy')
 
-# MY_MESSAGE = "tits"
-
 MY_MESSAGE = "Test...test...Ayhem Speaking..."
 
 
